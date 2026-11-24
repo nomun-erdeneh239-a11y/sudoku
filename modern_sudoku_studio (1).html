@@ -1,0 +1,1211 @@
+<!DOCTYPE html>
+<html lang="en" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modern Sudoku Studio</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter & JetBrains Mono for crisp numbers -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            200: '#bfdbfe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        }
+                    },
+                    animation: {
+                        'pop': 'pop 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+                        'shake': 'shake 0.35s cubic-bezier(.36,.07,.19,.97) both',
+                        'fade-in': 'fadeIn 0.25s ease-out forwards',
+                    },
+                    keyframes: {
+                        pop: {
+                            '0%': { transform: 'scale(0.75)', opacity: '0.5' },
+                            '100%': { transform: 'scale(1)', opacity: '1' },
+                        },
+                        shake: {
+                            '10%, 90%': { transform: 'translate3d(-1px, 0, 0)' },
+                            '20%, 80%': { transform: 'translate3d(2px, 0, 0)' },
+                            '30%, 50%, 70%': { transform: 'translate3d(-3px, 0, 0)' },
+                            '40%, 60%': { transform: 'translate3d(3px, 0, 0)' }
+                        },
+                        fadeIn: {
+                            '0%': { opacity: '0', transform: 'translateY(8px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' }
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom scrollbar & touch improvements */
+        body {
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+        }
+        /* Ensure crisp 1:1 square aspect ratio for the Sudoku board */
+        .sudoku-grid {
+            display: grid;
+            grid-template-columns: repeat(9, minmax(0, 1fr));
+            grid-template-rows: repeat(9, minmax(0, 1fr));
+            aspect-ratio: 1 / 1;
+        }
+        /* Thick 3x3 Subgrid Borders */
+        .cell-border-right {
+            border-right-width: 2px !important;
+        }
+        .cell-border-bottom {
+            border-bottom-width: 2px !important;
+        }
+        /* Notes 3x3 micro-grid inside each cell */
+        .notes-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 min-h-screen flex flex-col transition-colors duration-200 font-sans">
+
+    <!-- Top Navigation Bar -->
+    <header class="w-full border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md sticky top-0 z-30">
+        <div class="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
+            <!-- Brand -->
+            <div class="flex items-center gap-2.5">
+                <div class="w-9 h-9 rounded-xl bg-brand-600 text-white flex items-center justify-center shadow-sm shadow-brand-600/30">
+                    <i data-lucide="grid-3x3" class="w-5 h-5"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg tracking-tight leading-none">Sudoku<span class="text-brand-600 dark:text-brand-500">Studio</span></h1>
+                    <p class="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">Classic Logic Puzzle</p>
+                </div>
+            </div>
+
+            <!-- Difficulty Selector (Desktop) -->
+            <div class="hidden md:flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl" id="desktop-difficulty-bar">
+                <button data-diff="Easy" class="diff-btn px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all">Easy</button>
+                <button data-diff="Medium" class="diff-btn px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all">Medium</button>
+                <button data-diff="Hard" class="diff-btn px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all">Hard</button>
+                <button data-diff="Expert" class="diff-btn px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all">Expert</button>
+            </div>
+
+            <!-- Right Header Actions -->
+            <div class="flex items-center gap-2">
+                <!-- Settings Toggle -->
+                <button id="settings-toggle-btn" title="Game Settings" class="p-2.5 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors relative">
+                    <i data-lucide="sliders-horizontal" class="w-5 h-5"></i>
+                </button>
+                <!-- Dark Mode Toggle -->
+                <button id="theme-toggle-btn" title="Toggle Light/Dark Mode" class="p-2.5 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                    <i data-lucide="moon" class="w-5 h-5 hidden dark:block"></i>
+                    <i data-lucide="sun" class="w-5 h-5 block dark:hidden"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Settings Dropdown Drawer (Collapsible) -->
+    <div id="settings-panel" class="hidden border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+        <div class="max-w-5xl mx-auto px-4 py-4 flex flex-wrap items-center justify-between gap-4 text-sm">
+            <div class="flex flex-wrap items-center gap-6">
+                <label class="flex items-center gap-2.5 cursor-pointer">
+                    <input type="checkbox" id="opt-auto-check" checked class="w-4 h-4 rounded text-brand-600 focus:ring-brand-500">
+                    <span class="font-medium">Highlight Mistakes</span>
+                </label>
+                <label class="flex items-center gap-2.5 cursor-pointer">
+                    <input type="checkbox" id="opt-mistake-limit" checked class="w-4 h-4 rounded text-brand-600 focus:ring-brand-500">
+                    <span class="font-medium">3-Mistake Limit</span>
+                </label>
+                <label class="flex items-center gap-2.5 cursor-pointer">
+                    <input type="checkbox" id="opt-auto-notes" checked class="w-4 h-4 rounded text-brand-600 focus:ring-brand-500">
+                    <span class="font-medium">Auto-Remove Notes</span>
+                </label>
+            </div>
+            <div class="text-xs text-slate-500 dark:text-slate-400">
+                Shortcuts: <kbd class="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded border border-slate-300 dark:border-slate-700">1-9</kbd> Input • <kbd class="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded border border-slate-300 dark:border-slate-700">N</kbd> Notes • <kbd class="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded border border-slate-300 dark:border-slate-700">Z</kbd> Undo
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Game Container -->
+    <main class="flex-1 max-w-5xl w-full mx-auto px-4 py-4 md:py-8 flex flex-col lg:flex-row items-center lg:items-start justify-center gap-6 lg:gap-10">
+
+        <!-- Left Column: Status Bar & Sudoku Grid -->
+        <div class="w-full max-w-[460px] flex flex-col gap-3">
+            
+            <!-- Mobile Difficulty Selector -->
+            <div class="flex md:hidden items-center justify-between bg-slate-200/70 dark:bg-slate-800/80 p-1 rounded-xl" id="mobile-difficulty-bar">
+                <button data-diff="Easy" class="diff-btn flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all">Easy</button>
+                <button data-diff="Medium" class="diff-btn flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all">Medium</button>
+                <button data-diff="Hard" class="diff-btn flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all">Hard</button>
+                <button data-diff="Expert" class="diff-btn flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all">Expert</button>
+            </div>
+
+            <!-- Game Telemetry Strip (Difficulty, Mistakes, Timer + Pause) -->
+            <div class="flex items-center justify-between px-1 text-sm font-medium text-slate-600 dark:text-slate-400">
+                <div class="flex items-center gap-3">
+                    <span id="status-difficulty" class="font-semibold text-slate-900 dark:text-slate-100">Medium</span>
+                    <span class="text-slate-300 dark:text-slate-700">•</span>
+                    <div id="mistakes-container" class="flex items-center gap-1">
+                        <span>Mistakes:</span>
+                        <span id="mistake-count" class="font-mono font-semibold text-slate-900 dark:text-slate-100">0/3</span>
+                    </div>
+                </div>
+
+                <!-- Timer & Pause Button -->
+                <div class="flex items-center gap-2">
+                    <div class="flex items-center gap-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-3 py-1 rounded-xl shadow-xs">
+                        <i data-lucide="clock" class="w-3.5 h-3.5 text-brand-600 dark:text-brand-500"></i>
+                        <span id="timer-display" class="font-mono font-semibold text-slate-800 dark:text-slate-200">00:00</span>
+                    </div>
+                    <button id="pause-btn" title="Pause / Resume Game" class="p-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors shadow-xs">
+                        <i data-lucide="pause" id="pause-icon" class="w-4 h-4"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Board Wrapper with Pause Overlay -->
+            <div class="relative w-full rounded-2xl overflow-hidden shadow-lg shadow-slate-200/70 dark:shadow-black/40 border-2 border-slate-800 dark:border-slate-600 bg-white dark:bg-slate-900">
+                
+                <!-- 9x9 Sudoku Grid -->
+                <div id="sudoku-board" class="sudoku-grid w-full"></div>
+
+                <!-- Anti-Cheat Pause Overlay -->
+                <div id="pause-overlay" class="hidden absolute inset-0 bg-slate-900/95 backdrop-blur-md z-20 flex flex-col items-center justify-center text-white p-6 text-center animate-fade-in">
+                    <div class="w-16 h-16 rounded-2xl bg-brand-600/20 border border-brand-500/30 flex items-center justify-center mb-4 text-brand-400">
+                        <i data-lucide="pause-circle" class="w-9 h-9"></i>
+                    </div>
+                    <h2 class="text-2xl font-bold mb-1">Game Paused</h2>
+                    <p class="text-slate-400 text-sm mb-6 max-w-xs">The board is hidden while paused so your solve time stays fair.</p>
+                    <button id="resume-overlay-btn" class="px-6 py-3 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold shadow-lg shadow-brand-600/30 transition-all flex items-center gap-2">
+                        <i data-lucide="play" class="w-4 h-4 fill-current"></i>
+                        <span>Resume Game</span>
+                    </button>
+                </div>
+
+                <!-- Loading Spinner Overlay (during puzzle generation) -->
+                <div id="loading-overlay" class="hidden absolute inset-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xs z-20 flex flex-col items-center justify-center">
+                    <div class="w-10 h-10 border-4 border-brand-600 border-t-transparent rounded-full animate-spin mb-3"></div>
+                    <p class="text-sm font-semibold text-slate-700 dark:text-slate-300">Generating Puzzle...</p>
+                </div>
+            </div>
+
+            <!-- Smart Hint Toast Banner -->
+            <div id="hint-banner" class="hidden rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800/60 px-3.5 py-2.5 text-xs text-amber-900 dark:text-amber-200 flex items-start justify-between gap-2 animate-fade-in">
+                <div class="flex items-start gap-2">
+                    <i data-lucide="lightbulb" class="w-4 h-4 text-amber-500 shrink-0 mt-0.5"></i>
+                    <span id="hint-banner-text">Logical step found!</span>
+                </div>
+                <button id="close-hint-banner" class="text-amber-600 dark:text-amber-400 hover:opacity-75">
+                    <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Right Column: Controls, Action Tools & Number Pad -->
+        <div class="w-full max-w-[460px] lg:w-80 flex flex-col gap-5 lg:mt-8">
+            
+            <!-- Primary Action Toolbar (Undo, Erase, Notes, Hint) -->
+            <div class="grid grid-cols-4 gap-2.5">
+                <!-- Undo -->
+                <button id="btn-undo" class="flex flex-col items-center justify-center gap-1.5 py-3 px-2 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-brand-500 dark:hover:border-brand-500 hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-all shadow-xs active:scale-95">
+                    <i data-lucide="undo-2" class="w-5 h-5 text-slate-700 dark:text-slate-300"></i>
+                    <span class="text-xs font-semibold text-slate-600 dark:text-slate-400">Undo</span>
+                </button>
+
+                <!-- Erase -->
+                <button id="btn-erase" class="flex flex-col items-center justify-center gap-1.5 py-3 px-2 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-brand-500 dark:hover:border-brand-500 hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-all shadow-xs active:scale-95">
+                    <i data-lucide="eraser" class="w-5 h-5 text-slate-700 dark:text-slate-300"></i>
+                    <span class="text-xs font-semibold text-slate-600 dark:text-slate-400">Erase</span>
+                </button>
+
+                <!-- Notes / Pencil Mode -->
+                <button id="btn-notes" class="relative flex flex-col items-center justify-center gap-1.5 py-3 px-2 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-brand-500 dark:hover:border-brand-500 transition-all shadow-xs active:scale-95">
+                    <span id="notes-badge" class="absolute top-1.5 right-1.5 px-1.5 py-0.2 rounded-full text-[10px] font-bold uppercase bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 transition-colors">OFF</span>
+                    <i data-lucide="pencil" class="w-5 h-5 text-slate-700 dark:text-slate-300" id="notes-icon"></i>
+                    <span class="text-xs font-semibold text-slate-600 dark:text-slate-400" id="notes-label">Notes</span>
+                </button>
+
+                <!-- Hint -->
+                <button id="btn-hint" class="relative flex flex-col items-center justify-center gap-1.5 py-3 px-2 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-amber-500 dark:hover:border-amber-500 hover:bg-amber-50/40 dark:hover:bg-amber-950/20 transition-all shadow-xs active:scale-95">
+                    <span id="hint-badge" class="absolute top-1.5 right-1.5 w-5 h-5 rounded-full text-[11px] font-bold flex items-center justify-center bg-brand-600 text-white">3</span>
+                    <i data-lucide="lightbulb" class="w-5 h-5 text-amber-500"></i>
+                    <span class="text-xs font-semibold text-slate-600 dark:text-slate-400">Hint</span>
+                </button>
+            </div>
+
+            <!-- Number Pad (1-9) -->
+            <div class="grid grid-cols-9 lg:grid-cols-3 gap-2 sm:gap-2.5" id="numpad">
+                <!-- Generated dynamically via JS so remaining counts update cleanly -->
+            </div>
+
+            <!-- New Game Button -->
+            <button id="btn-new-game" class="w-full py-3.5 px-5 rounded-2xl bg-brand-600 hover:bg-brand-700 active:scale-[0.99] text-white font-semibold text-sm shadow-md shadow-brand-600/25 transition-all flex items-center justify-center gap-2">
+                <i data-lucide="sparkles" class="w-4 h-4"></i>
+                <span>New Game</span>
+            </button>
+
+        </div>
+    </main>
+
+    <!-- Victory / Game Over Modal -->
+    <div id="endgame-modal" class="hidden fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-sm w-full p-6 text-center shadow-2xl animate-pop">
+            <div id="modal-icon-wrapper" class="w-16 h-16 rounded-2xl bg-emerald-100 dark:bg-emerald-950/70 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto mb-4">
+                <i data-lucide="trophy" id="modal-icon" class="w-8 h-8"></i>
+            </div>
+            <h2 id="modal-title" class="text-2xl font-bold mb-1">Puzzle Solved!</h2>
+            <p id="modal-subtitle" class="text-sm text-slate-500 dark:text-slate-400 mb-6">Great logic and focus!</p>
+
+            <!-- Stats Summary Card -->
+            <div class="grid grid-cols-3 gap-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 rounded-2xl p-3.5 mb-6">
+                <div>
+                    <p class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">Difficulty</p>
+                    <p id="modal-stat-diff" class="font-bold text-sm mt-0.5">Medium</p>
+                </div>
+                <div class="border-x border-slate-200 dark:border-slate-700">
+                    <p class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">Time</p>
+                    <p id="modal-stat-time" class="font-mono font-bold text-sm mt-0.5">04:12</p>
+                </div>
+                <div>
+                    <p class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">Mistakes</p>
+                    <p id="modal-stat-mistakes" class="font-mono font-bold text-sm mt-0.5">1/3</p>
+                </div>
+            </div>
+
+            <div class="flex flex-col gap-2.5">
+                <button id="modal-new-game-btn" class="w-full py-3 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm shadow-md shadow-brand-600/20 transition-all">
+                    Play Another Puzzle
+                </button>
+                <button id="modal-retry-btn" class="hidden w-full py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-sm transition-all">
+                    Continue This Board
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * ============================================================================
+         * SUDOKU ENGINE: GENERATOR, UNIQUE-SOLUTION SOLVER & LOGICAL HINT ANALYZER
+         * ============================================================================
+         */
+        class SudokuEngine {
+            constructor() {
+                this.SIZE = 9;
+            }
+
+            // Create an empty 9x9 matrix
+            createEmptyGrid() {
+                return Array.from({ length: 9 }, () => Array(9).fill(0));
+            }
+
+            // Deep copy a 9x9 matrix
+            cloneGrid(grid) {
+                return grid.map(row => [...row]);
+            }
+
+            // Shuffle an array in-place using Fisher-Yates
+            shuffle(array) {
+                for (let i = array.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [array[i], array[j]] = [array[j], array[i]];
+                }
+                return array;
+            }
+
+            // Check if placing `num` at (row, col) is valid according to Sudoku rules
+            isValid(grid, row, col, num) {
+                for (let i = 0; i < 9; i++) {
+                    if (grid[row][i] === num) return false;
+                    if (grid[i][col] === num) return false;
+                }
+                const boxRow = Math.floor(row / 3) * 3;
+                const boxCol = Math.floor(col / 3) * 3;
+                for (let r = 0; r < 3; r++) {
+                    for (let c = 0; c < 3; c++) {
+                        if (grid[boxRow + r][boxCol + c] === num) return false;
+                    }
+                }
+                return true;
+            }
+
+            // Fill a complete valid 9x9 board using randomized backtracking
+            fillBoard(grid) {
+                for (let row = 0; row < 9; row++) {
+                    for (let col = 0; col < 9; col++) {
+                        if (grid[row][col] === 0) {
+                            const nums = this.shuffle([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+                            for (const num of nums) {
+                                if (this.isValid(grid, row, col, num)) {
+                                    grid[row][col] = num;
+                                    if (this.fillBoard(grid)) return true;
+                                    grid[row][col] = 0;
+                                }
+                            }
+                            return false;
+                        }
+                    }
+                }
+                return true;
+            }
+
+            // Count solutions up to `limit` (used to guarantee unique solutions)
+            countSolutions(grid, limit = 2) {
+                let count = 0;
+                const solve = () => {
+                    if (count >= limit) return;
+
+                    // MRV Heuristic: Find empty cell with fewest valid candidates for speed
+                    let bestRow = -1, bestCol = -1, minCandidates = 10;
+                    for (let r = 0; r < 9; r++) {
+                        for (let c = 0; c < 9; c++) {
+                            if (grid[r][c] === 0) {
+                                let candidates = 0;
+                                for (let n = 1; n <= 9; n++) {
+                                    if (this.isValid(grid, r, c, n)) candidates++;
+                                }
+                                if (candidates < minCandidates) {
+                                    minCandidates = candidates;
+                                    bestRow = r;
+                                    bestCol = c;
+                                }
+                            }
+                        }
+                    }
+
+                    if (bestRow === -1) {
+                        count++;
+                        return;
+                    }
+
+                    for (let num = 1; num <= 9; num++) {
+                        if (this.isValid(grid, bestRow, bestCol, num)) {
+                            grid[bestRow][bestCol] = num;
+                            solve();
+                            grid[bestRow][bestCol] = 0;
+                        }
+                    }
+                };
+
+                solve();
+                return count;
+            }
+
+            // Generate a puzzle with a guaranteed unique solution for a given difficulty
+            generate(difficulty) {
+                const solution = this.createEmptyGrid();
+                this.fillBoard(solution);
+                const puzzle = this.cloneGrid(solution);
+
+                // Target number of clues to remove based on difficulty
+                const targetRemovals = {
+                    'Easy': 36,     // 45 clues remaining
+                    'Medium': 45,   // 36 clues remaining
+                    'Hard': 51,     // 30 clues remaining
+                    'Expert': 56    // 25 clues remaining
+                }[difficulty] || 45;
+
+                // Create list of all 81 coordinates and shuffle them
+                const coords = [];
+                for (let r = 0; r < 9; r++) {
+                    for (let c = 0; c < 9; c++) {
+                        coords.push([r, c]);
+                    }
+                }
+                this.shuffle(coords);
+
+                let removed = 0;
+                for (const [r, c] of coords) {
+                    if (removed >= targetRemovals) break;
+                    const backup = puzzle[r][c];
+                    puzzle[r][c] = 0;
+
+                    // Verify the puzzle still has strictly 1 unique solution
+                    const testGrid = this.cloneGrid(puzzle);
+                    if (this.countSolutions(testGrid, 2) !== 1) {
+                        puzzle[r][c] = backup; // Restore if ambiguity is introduced
+                    } else {
+                        removed++;
+                    }
+                }
+
+                return { puzzle, solution };
+            }
+
+            // Find a logical next step (Naked Single or Hidden Single) for smart hints
+            findLogicalHint(currentGrid, solutionGrid, selectedCell) {
+                // 1. If user selected an empty or incorrect cell, prioritize helping with that cell
+                if (selectedCell) {
+                    const { r, c } = selectedCell;
+                    if (currentGrid[r][c] !== solutionGrid[r][c]) {
+                        return {
+                            row: r,
+                            col: c,
+                            value: solutionGrid[r][c],
+                            reason: `Filled the selected cell (Row ${r + 1}, Col ${c + 1}) with ${solutionGrid[r][c]}.`
+                        };
+                    }
+                }
+
+                // 2. Search for a "Naked Single" (a cell where only 1 candidate is legal)
+                for (let r = 0; r < 9; r++) {
+                    for (let c = 0; c < 9; c++) {
+                        if (currentGrid[r][c] === 0) {
+                            const legal = [];
+                            for (let n = 1; n <= 9; n++) {
+                                if (this.isValid(currentGrid, r, c, n)) legal.push(n);
+                            }
+                            if (legal.length === 1) {
+                                return {
+                                    row: r,
+                                    col: c,
+                                    value: legal[0],
+                                    reason: `Naked Single: Row ${r + 1}, Col ${c + 1} can only be ${legal[0]}.`
+                                };
+                            }
+                        }
+                    }
+                }
+
+                // 3. Search for a "Hidden Single" in any row, column, or 3x3 box
+                for (let num = 1; num <= 9; num++) {
+                    // Check rows
+                    for (let r = 0; r < 9; r++) {
+                        const spots = [];
+                        for (let c = 0; c < 9; c++) {
+                            if (currentGrid[r][c] === 0 && this.isValid(currentGrid, r, c, num)) {
+                                spots.push(c);
+                            }
+                        }
+                        if (spots.length === 1) {
+                            return {
+                                row: r,
+                                col: spots[0],
+                                value: num,
+                                reason: `Hidden Single: ${num} only fits in one spot in Row ${r + 1}.`
+                            };
+                        }
+                    }
+                    // Check columns
+                    for (let c = 0; c < 9; c++) {
+                        const spots = [];
+                        for (let r = 0; r < 9; r++) {
+                            if (currentGrid[r][c] === 0 && this.isValid(currentGrid, r, c, num)) {
+                                spots.push(r);
+                            }
+                        }
+                        if (spots.length === 1) {
+                            return {
+                                row: spots[0],
+                                col: c,
+                                value: num,
+                                reason: `Hidden Single: ${num} only fits in one spot in Column ${c + 1}.`
+                            };
+                        }
+                    }
+                }
+
+                // 4. Fallback: pick first empty cell and reveal its solution value
+                for (let r = 0; r < 9; r++) {
+                    for (let c = 0; c < 9; c++) {
+                        if (currentGrid[r][c] === 0) {
+                            return {
+                                row: r,
+                                col: c,
+                                value: solutionGrid[r][c],
+                                reason: `Placed ${solutionGrid[r][c]} at Row ${r + 1}, Col ${c + 1}.`
+                            };
+                        }
+                    }
+                }
+
+                return null;
+            }
+        }
+
+        /**
+         * ============================================================================
+         * APPLICATION STATE & UI CONTROLLER
+         * ============================================================================
+         */
+        class SudokuApp {
+            constructor() {
+                this.engine = new SudokuEngine();
+
+                // Game State
+                this.difficulty = 'Medium';
+                this.initialBoard = [];
+                this.solutionBoard = [];
+                this.board = [];
+                this.notes = []; // 9x9 array of Sets
+                this.history = []; // Stack for Undo functionality
+
+                this.selected = { r: 4, c: 4 }; // Default center selection
+                this.notesMode = false;
+                this.mistakes = 0;
+                this.maxMistakes = 3;
+                this.hintsLeft = 3;
+
+                // Settings
+                this.settings = {
+                    autoCheck: true,
+                    mistakeLimit: true,
+                    autoRemoveNotes: true
+                };
+
+                // Timer State
+                this.secondsElapsed = 0;
+                this.timerInterval = null;
+                this.isPaused = false;
+                this.isGameOver = false;
+
+                // DOM References
+                this.boardEl = document.getElementById('sudoku-board');
+                this.numpadEl = document.getElementById('numpad');
+                this.timerEl = document.getElementById('timer-display');
+                this.mistakeEl = document.getElementById('mistake-count');
+                this.hintBadgeEl = document.getElementById('hint-badge');
+
+                this.initTheme();
+                this.bindEvents();
+                this.buildNumpad();
+                this.startNewGame('Medium');
+            }
+
+            // Initialize Light/Dark mode from system preference or localStorage
+            initTheme() {
+                const savedTheme = localStorage.getItem('sudoku-theme');
+                const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
+                    document.documentElement.classList.add('dark');
+                } else {
+                    document.documentElement.classList.remove('dark');
+                }
+            }
+
+            toggleTheme() {
+                const html = document.documentElement;
+                html.classList.toggle('dark');
+                localStorage.setItem('sudoku-theme', html.classList.contains('dark') ? 'dark' : 'light');
+            }
+
+            // Start a fresh puzzle
+            startNewGame(difficulty = this.difficulty) {
+                this.difficulty = difficulty;
+                this.updateDifficultyUI();
+
+                // Show brief loading state so UI stays responsive
+                const loader = document.getElementById('loading-overlay');
+                loader.classList.remove('hidden');
+
+                setTimeout(() => {
+                    const { puzzle, solution } = this.engine.generate(this.difficulty);
+                    this.initialBoard = puzzle;
+                    this.solutionBoard = solution;
+                    this.board = this.engine.cloneGrid(puzzle);
+                    this.notes = Array.from({ length: 9 }, () =>
+                        Array.from({ length: 9 }, () => new Set())
+                    );
+                    this.history = [];
+                    this.mistakes = 0;
+                    this.hintsLeft = 3;
+                    this.isGameOver = false;
+                    this.isPaused = false;
+
+                    // Hide overlays/modals
+                    document.getElementById('pause-overlay').classList.add('hidden');
+                    document.getElementById('endgame-modal').classList.add('hidden');
+                    document.getElementById('hint-banner').classList.add('hidden');
+                    loader.classList.add('hidden');
+
+                    // Select first empty cell automatically
+                    this.selectFirstEmptyCell();
+
+                    // Reset & start timer
+                    this.resetTimer();
+                    this.startTimer();
+
+                    this.updateStatsUI();
+                    this.renderBoard();
+                    this.updateNumpadCounts();
+                }, 40);
+            }
+
+            selectFirstEmptyCell() {
+                for (let r = 0; r < 9; r++) {
+                    for (let c = 0; c < 9; c++) {
+                        if (this.board[r][c] === 0) {
+                            this.selected = { r, c };
+                            return;
+                        }
+                    }
+                }
+                this.selected = { r: 0, c: 0 };
+            }
+
+            // Save snapshot for Undo
+            pushHistory() {
+                this.history.push({
+                    board: this.engine.cloneGrid(this.board),
+                    notes: this.notes.map(row => row.map(set => new Set(set)))
+                });
+                if (this.history.length > 50) this.history.shift();
+            }
+
+            undo() {
+                if (this.isPaused || this.isGameOver || this.history.length === 0) return;
+                const prev = this.history.pop();
+                this.board = prev.board;
+                this.notes = prev.notes;
+                this.renderBoard();
+                this.updateNumpadCounts();
+            }
+
+            // Handle number entry (1-9)
+            inputNumber(num) {
+                if (this.isPaused || this.isGameOver || !this.selected) return;
+                const { r, c } = this.selected;
+
+                // Prevent modifying initial fixed clues
+                if (this.initialBoard[r][c] !== 0) return;
+
+                // NOTES / PENCIL MODE
+                if (this.notesMode) {
+                    // Only allow notes on empty cells
+                    if (this.board[r][c] !== 0) return;
+                    this.pushHistory();
+                    if (this.notes[r][c].has(num)) {
+                        this.notes[r][c].delete(num);
+                    } else {
+                        this.notes[r][c].add(num);
+                    }
+                    this.renderBoard();
+                    return;
+                }
+
+                // NORMAL NUMBER ENTRY MODE
+                // If clicking the same number already present, toggle it off
+                if (this.board[r][c] === num) {
+                    this.eraseCell();
+                    return;
+                }
+
+                this.pushHistory();
+                this.board[r][c] = num;
+                this.notes[r][c].clear();
+
+                const isCorrect = (num === this.solutionBoard[r][c]);
+
+                if (!isCorrect && this.settings.autoCheck) {
+                    this.mistakes++;
+                    this.updateStatsUI();
+
+                    // Trigger shake animation on the cell
+                    this.renderBoard(true);
+
+                    if (this.settings.mistakeLimit && this.mistakes >= this.maxMistakes) {
+                        this.handleGameOver(false);
+                        return;
+                    }
+                } else {
+                    // Auto-remove matching pencil notes from peer row, col, and 3x3 box
+                    if (isCorrect && this.settings.autoRemoveNotes) {
+                        this.clearPeerNotes(r, c, num);
+                    }
+                    this.renderBoard(false, true);
+                }
+
+                this.updateNumpadCounts();
+                this.checkVictory();
+            }
+
+            // Remove candidate `num` from notes in the same row, column, and 3x3 box
+            clearPeerNotes(row, col, num) {
+                for (let i = 0; i < 9; i++) {
+                    this.notes[row][i].delete(num);
+                    this.notes[i][col].delete(num);
+                }
+                const boxR = Math.floor(row / 3) * 3;
+                const boxC = Math.floor(col / 3) * 3;
+                for (let r = 0; r < 3; r++) {
+                    for (let c = 0; c < 3; c++) {
+                        this.notes[boxR + r][boxC + c].delete(num);
+                    }
+                }
+            }
+
+            eraseCell() {
+                if (this.isPaused || this.isGameOver || !this.selected) return;
+                const { r, c } = this.selected;
+                if (this.initialBoard[r][c] !== 0) return;
+
+                if (this.board[r][c] !== 0 || this.notes[r][c].size > 0) {
+                    this.pushHistory();
+                    this.board[r][c] = 0;
+                    this.notes[r][c].clear();
+                    this.renderBoard();
+                    this.updateNumpadCounts();
+                }
+            }
+
+            toggleNotesMode() {
+                this.notesMode = !this.notesMode;
+                const btn = document.getElementById('btn-notes');
+                const badge = document.getElementById('notes-badge');
+                const icon = document.getElementById('notes-icon');
+                const label = document.getElementById('notes-label');
+
+                if (this.notesMode) {
+                    btn.classList.add('border-brand-600', 'bg-brand-50', 'dark:bg-brand-950/40', 'dark:border-brand-500');
+                    badge.textContent = 'ON';
+                    badge.classList.remove('bg-slate-200', 'dark:bg-slate-800', 'text-slate-600', 'dark:text-slate-400');
+                    badge.classList.add('bg-brand-600', 'text-white');
+                    icon.classList.add('text-brand-600', 'dark:text-brand-400');
+                    label.classList.add('text-brand-700', 'dark:text-brand-300');
+                } else {
+                    btn.classList.remove('border-brand-600', 'bg-brand-50', 'dark:bg-brand-950/40', 'dark:border-brand-500');
+                    badge.textContent = 'OFF';
+                    badge.classList.add('bg-slate-200', 'dark:bg-slate-800', 'text-slate-600', 'dark:text-slate-400');
+                    badge.classList.remove('bg-brand-600', 'text-white');
+                    icon.classList.remove('text-brand-600', 'dark:text-brand-400');
+                    label.classList.remove('text-brand-700', 'dark:text-brand-300');
+                }
+            }
+
+            useHint() {
+                if (this.isPaused || this.isGameOver || this.hintsLeft <= 0) return;
+
+                const hint = this.engine.findLogicalHint(this.board, this.solutionBoard, this.selected);
+                if (!hint) return;
+
+                this.pushHistory();
+                this.hintsLeft--;
+                this.updateStatsUI();
+
+                this.selected = { r: hint.row, c: hint.col };
+                this.board[hint.row][hint.col] = hint.value;
+                this.notes[hint.row][hint.col].clear();
+
+                if (this.settings.autoRemoveNotes) {
+                    this.clearPeerNotes(hint.row, hint.col, hint.value);
+                }
+
+                // Show helpful explanation banner
+                const banner = document.getElementById('hint-banner');
+                document.getElementById('hint-banner-text').textContent = hint.reason;
+                banner.classList.remove('hidden');
+
+                this.renderBoard(false, true);
+                this.updateNumpadCounts();
+                this.checkVictory();
+            }
+
+            checkVictory() {
+                for (let r = 0; r < 9; r++) {
+                    for (let c = 0; c < 9; c++) {
+                        if (this.board[r][c] !== this.solutionBoard[r][c]) {
+                            return false;
+                        }
+                    }
+                }
+                this.handleGameOver(true);
+                return true;
+            }
+
+            handleGameOver(isVictory) {
+                this.isGameOver = true;
+                this.stopTimer();
+
+                const modal = document.getElementById('endgame-modal');
+                const iconWrap = document.getElementById('modal-icon-wrapper');
+                const title = document.getElementById('modal-title');
+                const subtitle = document.getElementById('modal-subtitle');
+                const retryBtn = document.getElementById('modal-retry-btn');
+
+                document.getElementById('modal-stat-diff').textContent = this.difficulty;
+                document.getElementById('modal-stat-time').textContent = this.formatTime(this.secondsElapsed);
+                document.getElementById('modal-stat-mistakes').textContent = this.settings.mistakeLimit
+                    ? `${this.mistakes}/${this.maxMistakes}`
+                    : `${this.mistakes}`;
+
+                if (isVictory) {
+                    iconWrap.className = 'w-16 h-16 rounded-2xl bg-emerald-100 dark:bg-emerald-950/70 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto mb-4';
+                    iconWrap.innerHTML = '<i data-lucide="trophy" class="w-8 h-8"></i>';
+                    title.textContent = 'Puzzle Solved!';
+                    subtitle.textContent = 'Outstanding logic and concentration!';
+                    retryBtn.classList.add('hidden');
+                } else {
+                    iconWrap.className = 'w-16 h-16 rounded-2xl bg-rose-100 dark:bg-rose-950/70 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto mb-4';
+                    iconWrap.innerHTML = '<i data-lucide="alert-circle" class="w-8 h-8"></i>';
+                    title.textContent = 'Out of Mistakes';
+                    subtitle.textContent = 'You reached 3 mistakes. Want to keep trying or start fresh?';
+                    retryBtn.classList.remove('hidden');
+                }
+
+                lucide.createIcons();
+                modal.classList.remove('hidden');
+            }
+
+            // Timer Controls
+            startTimer() {
+                this.stopTimer();
+                this.timerInterval = setInterval(() => {
+                    if (!this.isPaused && !this.isGameOver) {
+                        this.secondsElapsed++;
+                        this.timerEl.textContent = this.formatTime(this.secondsElapsed);
+                    }
+                }, 1000);
+            }
+
+            stopTimer() {
+                if (this.timerInterval) {
+                    clearInterval(this.timerInterval);
+                    this.timerInterval = null;
+                }
+            }
+
+            resetTimer() {
+                this.stopTimer();
+                this.secondsElapsed = 0;
+                this.timerEl.textContent = '00:00';
+            }
+
+            togglePause() {
+                if (this.isGameOver) return;
+                this.isPaused = !this.isPaused;
+                const overlay = document.getElementById('pause-overlay');
+                const pauseBtn = document.getElementById('pause-btn');
+
+                if (this.isPaused) {
+                    overlay.classList.remove('hidden');
+                    pauseBtn.innerHTML = '<i data-lucide="play" class="w-4 h-4"></i>';
+                } else {
+                    overlay.classList.add('hidden');
+                    pauseBtn.innerHTML = '<i data-lucide="pause" class="w-4 h-4"></i>';
+                }
+                lucide.createIcons();
+            }
+
+            formatTime(totalSec) {
+                const mins = Math.floor(totalSec / 60).toString().padStart(2, '0');
+                const secs = (totalSec % 60).toString().padStart(2, '0');
+                return `${mins}:${secs}`;
+            }
+
+            // Update Difficulty Pill Highlights
+            updateDifficultyUI() {
+                document.getElementById('status-difficulty').textContent = this.difficulty;
+                document.querySelectorAll('.diff-btn').forEach(btn => {
+                    const isActive = btn.dataset.diff === this.difficulty;
+                    if (isActive) {
+                        btn.classList.add('bg-white', 'dark:bg-slate-900', 'text-brand-600', 'dark:text-brand-400', 'shadow-xs');
+                        btn.classList.remove('text-slate-600', 'dark:text-slate-400');
+                    } else {
+                        btn.classList.remove('bg-white', 'dark:bg-slate-900', 'text-brand-600', 'dark:text-brand-400', 'shadow-xs');
+                        btn.classList.add('text-slate-600', 'dark:text-slate-400');
+                    }
+                });
+            }
+
+            updateStatsUI() {
+                if (this.settings.mistakeLimit) {
+                    this.mistakeEl.textContent = `${this.mistakes}/${this.maxMistakes}`;
+                } else {
+                    this.mistakeEl.textContent = `${this.mistakes}`;
+                }
+                this.hintBadgeEl.textContent = this.hintsLeft;
+                const hintBtn = document.getElementById('btn-hint');
+                if (this.hintsLeft <= 0) {
+                    hintBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                } else {
+                    hintBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                }
+            }
+
+            // Build 1-9 Numpad Buttons
+            buildNumpad() {
+                this.numpadEl.innerHTML = '';
+                for (let n = 1; n <= 9; n++) {
+                    const btn = document.createElement('button');
+                    btn.dataset.num = n;
+                    btn.className = 'num-btn flex flex-col items-center justify-center py-2.5 lg:py-3.5 rounded-xl lg:rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-brand-500 dark:hover:border-brand-500 hover:bg-brand-50/50 dark:hover:bg-brand-950/30 transition-all shadow-xs active:scale-95';
+                    btn.innerHTML = `
+                        <span class="font-mono text-xl sm:text-2xl font-bold text-slate-800 dark:text-slate-100 leading-none">${n}</span>
+                        <span class="num-rem text-[10px] font-medium text-slate-400 dark:text-slate-500 mt-1">9</span>
+                    `;
+                    btn.addEventListener('click', () => this.inputNumber(n));
+                    this.numpadEl.appendChild(btn);
+                }
+            }
+
+            // Show how many of each digit (1-9) remain to be placed
+            updateNumpadCounts() {
+                const counts = Array(10).fill(0);
+                for (let r = 0; r < 9; r++) {
+                    for (let c = 0; c < 9; c++) {
+                        const val = this.board[r][c];
+                        if (val >= 1 && val <= 9 && val === this.solutionBoard[r][c]) {
+                            counts[val]++;
+                        }
+                    }
+                }
+
+                document.querySelectorAll('.num-btn').forEach(btn => {
+                    const num = parseInt(btn.dataset.num, 10);
+                    const remaining = Math.max(0, 9 - counts[num]);
+                    const remSpan = btn.querySelector('.num-rem');
+                    remSpan.textContent = remaining === 0 ? '✓' : remaining;
+
+                    if (remaining === 0) {
+                        btn.classList.add('opacity-40');
+                    } else {
+                        btn.classList.remove('opacity-40');
+                    }
+                });
+            }
+
+            // Render the interactive 9x9 Grid with smart relational & matching highlights
+            renderBoard(shakeSelected = false, popSelected = false) {
+                this.boardEl.innerHTML = '';
+
+                const selR = this.selected ? this.selected.r : -1;
+                const selC = this.selected ? this.selected.c : -1;
+                const selectedVal = (selR >= 0 && selC >= 0) ? this.board[selR][selC] : 0;
+                const selBoxR = Math.floor(selR / 3);
+                const selBoxC = Math.floor(selC / 3);
+
+                for (let r = 0; r < 9; r++) {
+                    for (let c = 0; c < 9; c++) {
+                        const cell = document.createElement('div');
+                        const val = this.board[r][c];
+                        const isGiven = this.initialBoard[r][c] !== 0;
+                        const isSelected = (r === selR && c === selC);
+                        const isPeer = !isSelected && (
+                            r === selR ||
+                            c === selC ||
+                            (Math.floor(r / 3) === selBoxR && Math.floor(c / 3) === selBoxC)
+                        );
+                        const isSameNumber = !isSelected && selectedVal !== 0 && val === selectedVal;
+                        const isError = !isGiven && val !== 0 && this.settings.autoCheck && val !== this.solutionBoard[r][c];
+
+                        // Base cell layout & subtle grid borders
+                        let classes = [
+                            'relative', 'flex', 'items-center', 'justify-center',
+                            'cursor-pointer', 'transition-colors', 'duration-100',
+                            'border-r', 'border-b', 'border-slate-200', 'dark:border-slate-800'
+                        ];
+
+                        // Thick 3x3 Subgrid Dividers
+                        if (c === 2 || c === 5) {
+                            classes.push('cell-border-right', '!border-r-slate-800', 'dark:!border-r-slate-600');
+                        }
+                        if (c === 8) classes.push('!border-r-0');
+                        if (r === 2 || r === 5) {
+                            classes.push('cell-border-bottom', '!border-b-slate-800', 'dark:!border-b-slate-600');
+                        }
+                        if (r === 8) classes.push('!border-b-0');
+
+                        // Background Highlighting Hierarchy
+                        if (isSelected) {
+                            classes.push('bg-brand-600', 'text-white', 'z-10');
+                        } else if (isError) {
+                            classes.push('bg-rose-100', 'dark:bg-rose-950/80');
+                        } else if (isSameNumber) {
+                            classes.push('bg-brand-200/80', 'dark:bg-brand-800/60');
+                        } else if (isPeer) {
+                            classes.push('bg-slate-100', 'dark:bg-slate-800/65');
+                        } else {
+                            classes.push('bg-white', 'dark:bg-slate-900');
+                        }
+
+                        cell.className = classes.join(' ');
+
+                        // Cell Content: Placed Number vs. Pencil Notes
+                        if (val !== 0) {
+                            const numSpan = document.createElement('span');
+                            let textClasses = ['font-mono', 'text-xl', 'sm:text-2xl', 'leading-none'];
+
+                            if (isSelected) {
+                                textClasses.push('font-bold', 'text-white');
+                            } else if (isError) {
+                                textClasses.push('font-bold', 'text-rose-600', 'dark:text-rose-400');
+                            } else if (isGiven) {
+                                textClasses.push('font-bold', 'text-slate-900', 'dark:text-slate-100');
+                            } else {
+                                textClasses.push('font-semibold', 'text-brand-600', 'dark:text-brand-400');
+                            }
+
+                            if (isSelected && shakeSelected) textClasses.push('animate-shake');
+                            if (isSelected && popSelected) textClasses.push('animate-pop');
+
+                            numSpan.className = textClasses.join(' ');
+                            numSpan.textContent = val;
+                            cell.appendChild(numSpan);
+                        } else if (this.notes[r][c].size > 0) {
+                            const notesGrid = document.createElement('div');
+                            notesGrid.className = 'notes-grid w-full h-full p-0.5 sm:p-1 pointer-events-none';
+                            for (let n = 1; n <= 9; n++) {
+                                const noteItem = document.createElement('span');
+                                const hasNote = this.notes[r][c].has(n);
+                                const highlightNote = hasNote && selectedVal === n;
+
+                                noteItem.className = [
+                                    'flex', 'items-center', 'justify-center',
+                                    'font-mono', 'text-[9px]', 'sm:text-[10px]', 'leading-none',
+                                    isSelected
+                                        ? 'text-brand-100 font-semibold'
+                                        : highlightNote
+                                            ? 'text-brand-600 dark:text-brand-400 font-bold bg-brand-100 dark:bg-brand-900/60 rounded-xs'
+                                            : 'text-slate-500 dark:text-slate-400 font-medium'
+                                ].join(' ');
+                                noteItem.textContent = hasNote ? n : '';
+                                notesGrid.appendChild(noteItem);
+                            }
+                            cell.appendChild(notesGrid);
+                        }
+
+                        cell.addEventListener('click', () => {
+                            if (this.isPaused) return;
+                            this.selected = { r, c };
+                            this.renderBoard();
+                        });
+
+                        this.boardEl.appendChild(cell);
+                    }
+                }
+            }
+
+            // Keyboard & Button Event Listeners
+            bindEvents() {
+                // Theme Toggle
+                document.getElementById('theme-toggle-btn').addEventListener('click', () => this.toggleTheme());
+
+                // Settings Drawer Toggle
+                document.getElementById('settings-toggle-btn').addEventListener('click', () => {
+                    document.getElementById('settings-panel').classList.toggle('hidden');
+                });
+
+                // Settings Checkboxes
+                document.getElementById('opt-auto-check').addEventListener('change', (e) => {
+                    this.settings.autoCheck = e.target.checked;
+                    this.renderBoard();
+                });
+                document.getElementById('opt-mistake-limit').addEventListener('change', (e) => {
+                    this.settings.mistakeLimit = e.target.checked;
+                    this.updateStatsUI();
+                });
+                document.getElementById('opt-auto-notes').addEventListener('change', (e) => {
+                    this.settings.autoRemoveNotes = e.target.checked;
+                });
+
+                // Difficulty Buttons (Desktop + Mobile)
+                document.querySelectorAll('.diff-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        this.startNewGame(btn.dataset.diff);
+                    });
+                });
+
+                // Control Toolbar Buttons
+                document.getElementById('btn-undo').addEventListener('click', () => this.undo());
+                document.getElementById('btn-erase').addEventListener('click', () => this.eraseCell());
+                document.getElementById('btn-notes').addEventListener('click', () => this.toggleNotesMode());
+                document.getElementById('btn-hint').addEventListener('click', () => this.useHint());
+                document.getElementById('btn-new-game').addEventListener('click', () => this.startNewGame());
+
+                // Pause / Resume
+                document.getElementById('pause-btn').addEventListener('click', () => this.togglePause());
+                document.getElementById('resume-overlay-btn').addEventListener('click', () => this.togglePause());
+
+                // Hint Banner Close
+                document.getElementById('close-hint-banner').addEventListener('click', () => {
+                    document.getElementById('hint-banner').classList.add('hidden');
+                });
+
+                // End-Game Modal Buttons
+                document.getElementById('modal-new-game-btn').addEventListener('click', () => {
+                    this.startNewGame();
+                });
+                document.getElementById('modal-retry-btn').addEventListener('click', () => {
+                    // Allow player to continue playing with mistake limit turned off
+                    this.isGameOver = false;
+                    this.settings.mistakeLimit = false;
+                    document.getElementById('opt-mistake-limit').checked = false;
+                    document.getElementById('endgame-modal').classList.add('hidden');
+                    this.updateStatsUI();
+                    this.startTimer();
+                });
+
+                // Full Keyboard Navigation & Input Support
+                document.addEventListener('keydown', (e) => {
+                    if (this.isPaused || this.isGameOver) return;
+
+                    // Arrow Key Navigation
+                    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                        e.preventDefault();
+                        let { r, c } = this.selected;
+                        if (e.key === 'ArrowUp') r = (r + 8) % 9;
+                        if (e.key === 'ArrowDown') r = (r + 1) % 9;
+                        if (e.key === 'ArrowLeft') c = (c + 8) % 9;
+                        if (e.key === 'ArrowRight') c = (c + 1) % 9;
+                        this.selected = { r, c };
+                        this.renderBoard();
+                        return;
+                    }
+
+                    // Numbers 1-9
+                    if (e.key >= '1' && e.key <= '9') {
+                        this.inputNumber(parseInt(e.key, 10));
+                        return;
+                    }
+
+                    // Clear Cell
+                    if (e.key === 'Backspace' || e.key === 'Delete' || e.key === '0') {
+                        e.preventDefault();
+                        this.eraseCell();
+                        return;
+                    }
+
+                    // Toggle Notes ('N')
+                    if (e.key.toLowerCase() === 'n') {
+                        this.toggleNotesMode();
+                        return;
+                    }
+
+                    // Undo ('Z' or Ctrl+Z)
+                    if (e.key.toLowerCase() === 'z') {
+                        this.undo();
+                        return;
+                    }
+                });
+            }
+        }
+
+        // Boot application once DOM & Lucide icons are ready
+        window.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            window.sudokuApp = new SudokuApp();
+        });
+    </script>
+</body>
+</html>
